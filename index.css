@@ -199,14 +199,23 @@ td[data-task-total="qc-end"], td[data-task-sent="qc-end"] { background-color: va
 
 /* Footer Totals */
 tfoot tr td {
-  background: #0f172a !important;
-  color: white !important;
   font-size: 18px !important;
   font-weight: 900;
-  padding: 16px 8px;
+  padding: 12px 8px;
   height: auto;
   border: 1px solid var(--border-color);
+  color: white;
 }
+
+.footer-label {
+    background: #0f172a !important;
+    font-size: 14px !important;
+}
+
+.footer-neua-fa { background: #ea580c !important; }
+.footer-qc-ww { background: #4f46e5 !important; }
+.footer-qc-end { background: #059669 !important; }
+.footer-spacer { background: #f8fafc !important; border-top: 1px solid var(--border-color); }
 
 /* Summary Tables Layout */
 .summary-container {

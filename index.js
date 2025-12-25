@@ -8,9 +8,9 @@
   const FLOORS = [2, 3, 4, 5, 6, 7, 8];
   const LOCAL_STORAGE_KEY = 'schedule-app-state';
   const SUMMARY_TASKS = [
-      {id: 'neua-fa', name: 'สรุป QC เหนือฝ้า'},
-      {id: 'qc-ww', name: 'สรุป QC WW'},
-      {id: 'qc-end', name: 'สรุป QC End'},
+      {id: 'neua-fa', name: 'สรุป QC เหนือฝ้า', color: 'F97316'},
+      {id: 'qc-ww', name: 'สรุป QC WW', color: '6366F1'},
+      {id: 'qc-end', name: 'สรุป QC End', color: '10B981'},
   ];
   
   let WEEKS = 0;
@@ -160,7 +160,24 @@
     popoverClear.addEventListener('click', () => updateCell(null));
     popoverCancel.addEventListener('click', hidePopover);
     captureButton.addEventListener('click', captureImage);
-    document.getElementById('export-excel-btn').addEventListener('click', () => alert('Excel export feature coming soon.'));
+    document.getElementById('export-excel-btn').addEventListener('click', exportToExcel);
+    document.getElementById('export-json-btn').addEventListener('click', () => {
+        const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+        const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `qc-data-${Date.now()}.json`; link.click();
+    });
+    document.getElementById('import-json-btn').addEventListener('click', () => document.getElementById('import-json-input').click());
+    document.getElementById('import-json-input').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            try {
+                state = JSON.parse(ev.target.result);
+                renderAll(); saveState();
+            } catch (err) { alert('Invalid file'); }
+        };
+        reader.readAsText(file);
+    });
   }
 
   function showPopover(cell) {
@@ -341,6 +358,177 @@
     const link = document.createElement('a');
     link.download = `qc-report-${new Date().toISOString().slice(0,10)}.png`;
     link.href = canvas.toDataURL('image/png');
+    link.click();
+  }
+
+  async function exportToExcel() {
+    if (!window.ExcelJS) return;
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('QC Update');
+
+    // Styling configurations
+    const centerAlign = { vertical: 'middle', horizontal: 'center' };
+    const borderAll = {
+      top: { style: 'thin' },
+      left: { style: 'thin' },
+      bottom: { style: 'thin' },
+      right: { style: 'thin' }
+    };
+
+    // Header section
+    sheet.mergeCells('A1', 'H1');
+    const titleCell = sheet.getCell('A1');
+    titleCell.value = 'QC PROJECT UPDATE';
+    titleCell.font = { size: 16, bold: true };
+    titleCell.alignment = centerAlign;
+
+    // Main Table Headers
+    const headerRow1 = sheet.getRow(3);
+    const headerRow2 = sheet.getRow(4);
+    
+    sheet.mergeCells('A3', 'A4');
+    sheet.getCell('A3').value = 'ชั้น';
+    sheet.mergeCells('B3', 'C3');
+    sheet.getCell('B3').value = 'เหนือผ้า';
+    sheet.mergeCells('D3', 'E3');
+    sheet.getCell('D3').value = 'QC WW';
+    sheet.mergeCells('F3', 'G3');
+    sheet.getCell('F3').value = 'QC END';
+    sheet.mergeCells('H3', 'H4'); // Spacer column
+
+    // Subheaders
+    sheet.getCell('B4').value = 'ทั้งหมด';
+    sheet.getCell('C4').value = 'ส่ง';
+    sheet.getCell('D4').value = 'ทั้งหมด';
+    sheet.getCell('E4').value = 'ส่ง';
+    sheet.getCell('F4').value = 'ทั้งหมด';
+    sheet.getCell('G4').value = 'ส่ง';
+
+    // Weeks Headers
+    WEEK_HEADERS.forEach((w, idx) => {
+        const colIdx = 9 + idx;
+        const col = sheet.getColumn(colIdx);
+        sheet.getCell(3, colIdx).value = w.split('/')[1]; // Month
+        sheet.getCell(4, colIdx).value = w.split('/')[0]; // Days
+    });
+
+    // Formatting Headers
+    [3, 4].forEach(r => {
+        const row = sheet.getRow(r);
+        row.eachCell(cell => {
+            cell.alignment = centerAlign;
+            cell.font = { bold: true };
+            cell.border = borderAll;
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F1F5F9' } };
+        });
+    });
+
+    // Task Colors
+    const colors = {
+        'neua-fa': 'F97316',
+        'qc-ww': '6366F1',
+        'qc-end': '10B981'
+    };
+
+    // Data Rows
+    let currentRow = 5;
+    const globalTotals = { 'neua-fa': { p: 0, a: 0 }, 'qc-ww': { p: 0, a: 0 }, 'qc-end': { p: 0, a: 0 } };
+
+    FLOORS.forEach(f => {
+        const fT = { 'neua-fa': { p: 0, a: 0 }, 'qc-ww': { p: 0, a: 0 }, 'qc-end': { p: 0, a: 0 } };
+        
+        sheet.mergeCells(`A${currentRow}`, `A${currentRow + 1}`);
+        sheet.getCell(`A${currentRow}`).value = f;
+        sheet.getCell(`A${currentRow}`).alignment = centerAlign;
+        sheet.getCell(`A${currentRow}`).font = { bold: true, size: 14 };
+
+        sheet.getCell(`H${currentRow}`).value = 'Plan';
+        sheet.getCell(`H${currentRow + 1}`).value = 'Actual';
+
+        // Fill Plan/Actual for each week
+        for (let w = 0; w < WEEKS; w++) {
+            const d = state[f][w];
+            const colIdx = 9 + w;
+            
+            // Plan Cell
+            if (d.plan.value !== null) {
+                const pCell = sheet.getCell(currentRow, colIdx);
+                pCell.value = d.plan.value;
+                if (d.plan.task) {
+                    pCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors[d.plan.task] } };
+                    pCell.font = { color: { argb: 'FFFFFF' }, bold: true };
+                    fT[d.plan.task].p += d.plan.value;
+                    globalTotals[d.plan.task].p += d.plan.value;
+                }
+            }
+
+            // Actual Cell
+            const ts = Object.keys(d.actual).filter(t => d.actual[t]);
+            if (ts.length > 0) {
+                const aCell = sheet.getCell(currentRow + 1, colIdx);
+                // For simplicity in Excel, if multiple tasks, show combined value or just first
+                aCell.value = ts.map(t => d.actual[t]).reduce((a, b) => a + b, 0);
+                aCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors[ts[0]] } };
+                aCell.font = { color: { argb: 'FFFFFF' }, bold: true };
+                
+                ts.forEach(t => {
+                    fT[t].a += d.actual[t];
+                    globalTotals[t].a += d.actual[t];
+                });
+            }
+        }
+
+        // Fill Floor Summary Columns
+        sheet.mergeCells(`B${currentRow}`, `B${currentRow + 1}`);
+        sheet.getCell(`B${currentRow}`).value = fT['neua-fa'].p || '';
+        sheet.mergeCells(`C${currentRow}`, `C${currentRow + 1}`);
+        sheet.getCell(`C${currentRow}`).value = fT['neua-fa'].a || '';
+        
+        sheet.mergeCells(`D${currentRow}`, `D${currentRow + 1}`);
+        sheet.getCell(`D${currentRow}`).value = fT['qc-ww'].p || '';
+        sheet.mergeCells(`E${currentRow}`, `E${currentRow + 1}`);
+        sheet.getCell(`E${currentRow}`).value = fT['qc-ww'].a || '';
+
+        sheet.mergeCells(`F${currentRow}`, `F${currentRow + 1}`);
+        sheet.getCell(`F${currentRow}`).value = fT['qc-end'].p || '';
+        sheet.mergeCells(`G${currentRow}`, `G${currentRow + 1}`);
+        sheet.getCell(`G${currentRow}`).value = fT['qc-end'].a || '';
+
+        currentRow += 2;
+    });
+
+    // Formatting Data Rows
+    for (let r = 5; r < currentRow; r++) {
+        sheet.getRow(r).eachCell(cell => {
+            cell.border = borderAll;
+            cell.alignment = centerAlign;
+        });
+    }
+
+    // Grand Totals Row
+    sheet.getCell(currentRow, 1).value = 'รวมทั้งหมด';
+    sheet.getCell(currentRow, 1).font = { bold: true };
+    sheet.getCell(currentRow, 2).value = globalTotals['neua-fa'].p;
+    sheet.getCell(currentRow, 3).value = globalTotals['neua-fa'].a;
+    sheet.getCell(currentRow, 4).value = globalTotals['qc-ww'].p;
+    sheet.getCell(currentRow, 5).value = globalTotals['qc-ww'].a;
+    sheet.getCell(currentRow, 6).value = globalTotals['qc-end'].p;
+    sheet.getCell(currentRow, 7).value = globalTotals['qc-end'].a;
+    
+    const totalRow = sheet.getRow(currentRow);
+    totalRow.eachCell(cell => {
+        cell.font = { bold: true, color: { argb: 'FFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '0F172A' } };
+        cell.border = borderAll;
+        cell.alignment = centerAlign;
+    });
+
+    // Finalize
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `QC_Project_Update_${new Date().toISOString().split('T')[0]}.xlsx`;
     link.click();
   }
 })();
