@@ -37,7 +37,7 @@
 
   function generateWeekData() {
     const thaiMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-    const end = new Date(2026, 0, 31);
+    const end = new Date(2026, 1, 28); // End of Feb 2026
     
     WEEK_HEADERS = [];
     const current = new Date(START_DATE);
